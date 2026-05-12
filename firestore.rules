@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 2. Validation Blueprints
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+             data.keys().size() <= 5 &&
+             data.email is string && data.email.size() <= 256 &&
+             (data.get('displayName', '') is string && data.get('displayName', '').size() <= 128) &&
+             (data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 1024);
+    }
+
+    function isValidAlbum(data) {
+      return data.keys().hasAll(['title', 'ownerId', 'createdAt']) &&
+             data.keys().size() <= 7 &&
+             data.title is string && data.title.size() <= 128 &&
+             data.ownerId == request.auth.uid &&
+             (data.get('description', '') is string && data.get('description', '').size() <= 1024) &&
+             (data.get('coverPhotoUrl', '') is string && data.get('coverPhotoUrl', '').size() <= 2048) &&
+             (data.get('photoCount', 0) is number);
+    }
+
+    function isValidPhoto(data) {
+      return data.keys().hasAll(['url', 'ownerId', 'createdAt']) &&
+             data.keys().size() <= 8 &&
+             data.url is string && data.url.size() <= 2048 &&
+             data.ownerId == request.auth.uid &&
+             (data.get('title', '') is string && data.get('title', '').size() <= 128) &&
+             (data.get('description', '') is string && data.get('description', '').size() <= 1024) &&
+             (data.get('albumId', '') is string && (data.get('albumId', '') == '' || isValidId(data.get('albumId', '')))) &&
+             (data.get('isFavorite', false) is bool) &&
+             (data.get('tags', []).size() <= 20);
+    }
+
+    // 1. Master Gate Patterns
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isEmailVerified() && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL']);
+    }
+
+    match /albums/{albumId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isEmailVerified() && isValidAlbum(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && 
+                    isValidAlbum(incoming()) && 
+                    incoming().ownerId == existing().ownerId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasAll(['title', 'description', 'coverPhotoUrl', 'photoCount']).hasOnly(['title', 'description', 'coverPhotoUrl', 'photoCount']);
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /photos/{photoId} {
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isEmailVerified() && isValidPhoto(incoming()) && 
+                    incoming().createdAt == request.time &&
+                    (incoming().albumId == '' || get(/databases/$(database)/documents/albums/$(incoming().albumId)).data.ownerId == request.auth.uid);
+      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && 
+                    isValidPhoto(incoming()) && 
+                    incoming().ownerId == existing().ownerId &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'albumId', 'isFavorite', 'tags']);
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}

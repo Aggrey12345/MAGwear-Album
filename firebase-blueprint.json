@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Album": {
+      "title": "Album",
+      "description": "A collection of photos",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "photoCount": { "type": "number" },
+        "coverPhotoUrl": { "type": "string" }
+      },
+      "required": ["title", "ownerId", "createdAt"]
+    },
+    "Photo": {
+      "title": "Photo",
+      "description": "An individual photo entry",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "albumId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isFavorite": { "type": "boolean" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["url", "ownerId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Public and private user profile data"
+    },
+    "/albums/{albumId}": {
+      "schema": "Album",
+      "description": "Albums created by users"
+    },
+    "/photos/{photoId}": {
+      "schema": "Photo",
+      "description": "Individual photos uploaded by users"
+    }
+  }
+}
