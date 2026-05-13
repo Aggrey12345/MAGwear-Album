@@ -28,14 +28,15 @@
     },
     "Photo": {
       "title": "Photo",
-      "description": "An individual photo entry",
+      "description": "An individual photo entry (Base64 stored)",
       "type": "object",
       "properties": {
-        "url": { "type": "string" },
+        "url": { "type": "string", "description": "Base64 encoded image data" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "albumId": { "type": "string" },
         "ownerId": { "type": "string" },
+        "userId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "isFavorite": { "type": "boolean" },
         "tags": {
@@ -43,7 +44,7 @@
           "items": { "type": "string" }
         }
       },
-      "required": ["url", "ownerId", "createdAt"]
+      "required": ["url", "ownerId", "userId", "createdAt"]
     }
   },
   "firestore": {

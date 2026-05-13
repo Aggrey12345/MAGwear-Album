@@ -27,7 +27,7 @@ import {
   LogIn
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from './lib/utils';
+import { cn, downloadBase64Image } from './lib/utils';
 import { Photo, Album } from './types';
 
 // Components
@@ -439,7 +439,7 @@ function PhotoViewer({ photo, onClose, next, prev, onToggleFavorite, onDelete }:
                 <Heart size={20} className={photo.isFavorite ? "fill-current" : ""} />
               </button>
               <button 
-                onClick={() => window.open(photo.url, '_blank')}
+                onClick={() => downloadBase64Image(photo.url, `${photo.title || 'photo'}.jpg`)}
                 className="p-2 text-muted-foreground hover:text-foreground transition-colors"
                 title="Download"
               >
@@ -742,7 +742,7 @@ function MainContent() {
         onDelete={(id) => {
           if (window.confirm('Are you sure you want to delete this photo forever?')) {
             const p = photos.find(ph => ph.id === id);
-            deletePhoto(id, (p as any).storagePath, p?.albumId);
+            deletePhoto(id, p?.albumId);
           }
         }}
       />

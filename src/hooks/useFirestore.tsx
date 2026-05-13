@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   collection, 
   query, 
   where, 
   onSnapshot, 
-  orderBy, 
   addDoc, 
   updateDoc, 
   doc, 
@@ -13,9 +12,9 @@ import {
   increment,
   writeBatch
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage, auth, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Album, Photo } from '../types';
+import { compressAndEncodeImage } from '../lib/imageUtils';
 
 export function useAlbums() {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -26,12 +25,17 @@ export function useAlbums() {
 
     const q = query(
       collection(db, 'albums'),
-      where('ownerId', '==', auth.currentUser.uid),
-      orderBy('createdAt', 'desc')
+      where('ownerId', '==', auth.currentUser.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Album));
+      const docs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Album))
+        .sort((a, b) => {
+          const timeA = (a.createdAt as any)?.seconds || 0;
+          const timeB = (b.createdAt as any)?.seconds || 0;
+          return timeB - timeA; // Descending
+        });
       setAlbums(docs);
       setLoading(false);
     }, (error) => {
@@ -51,34 +55,39 @@ export function usePhotos(albumId: string | null) {
   useEffect(() => {
     if (!auth.currentUser) return;
 
+    // instructions: always filter by userId AND albumId if provided.
+    // Sorting in-memory as requested to avoid index requirements.
     let q = query(
       collection(db, 'photos'),
-      where('ownerId', '==', auth.currentUser.uid),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', auth.currentUser.uid)
     );
 
     if (albumId === 'favorites') {
       q = query(
         collection(db, 'photos'),
-        where('ownerId', '==', auth.currentUser.uid),
-        where('isFavorite', '==', true),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', auth.currentUser.uid),
+        where('isFavorite', '==', true)
       );
     } else if (albumId) {
       q = query(
         collection(db, 'photos'),
-        where('ownerId', '==', auth.currentUser.uid),
-        where('albumId', '==', albumId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', auth.currentUser.uid),
+        where('albumId', '==', albumId)
       );
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Photo));
+      const docs = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Photo))
+        .sort((a, b) => {
+          const timeA = (a.createdAt as any)?.seconds || 0;
+          const timeB = (b.createdAt as any)?.seconds || 0;
+          return timeB - timeA;
+        });
       setPhotos(docs);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'photos');
+      handleFirestoreError(error, OperationType.LIST, `photos (album: ${albumId})`);
     });
 
     return () => unsubscribe();
@@ -91,28 +100,25 @@ export async function uploadPhoto(data: { file: File, title: string, description
   if (!auth.currentUser) throw new Error('User not authenticated');
 
   const userId = auth.currentUser.uid;
-  const photoId = Math.random().toString(36).substr(2, 9);
-  const storageRef = ref(storage, `photos/${userId}/${photoId}_${data.file.name}`);
 
   try {
-    // 1. Upload to Storage
-    const snapshot = await uploadBytes(storageRef, data.file);
-    const url = await getDownloadURL(snapshot.ref);
+    // 1. Compress and encode to base64
+    const url = await compressAndEncodeImage(data.file);
 
     // 2. Save to Firestore
     const batch = writeBatch(db);
     const photoRef = doc(collection(db, 'photos'));
     
     batch.set(photoRef, {
-      url,
+      url, // Base64 string
       title: data.title,
       description: data.description,
       albumId: data.albumId || '',
-      ownerId: userId,
+      ownerId: userId, // also userId as requested
+      userId: userId, 
       createdAt: serverTimestamp(),
       isFavorite: false,
-      tags: data.tags.split(',').map(t => t.trim()).filter(Boolean),
-      storagePath: snapshot.ref.fullPath
+      tags: data.tags.split(',').map(t => t.trim()).filter(Boolean)
     });
 
     // 3. Update album count if applicable
@@ -156,7 +162,7 @@ export async function togglePhotoFavorite(photoId: string, isFavorite: boolean) 
   }
 }
 
-export async function deletePhoto(photoId: string, storagePath?: string, albumId?: string) {
+export async function deletePhoto(photoId: string, albumId?: string) {
   try {
     const batch = writeBatch(db);
     
@@ -171,12 +177,6 @@ export async function deletePhoto(photoId: string, storagePath?: string, albumId
     }
 
     await batch.commit();
-
-    // 3. Delete from Storage (best effort)
-    if (storagePath) {
-      const sRef = ref(storage, storagePath);
-      await deleteObject(sRef);
-    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `photos/${photoId}`);
   }

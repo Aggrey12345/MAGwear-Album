@@ -51,16 +51,16 @@ service cloud.firestore {
     }
 
     function isValidPhoto(data) {
-      return data.keys().hasAll(['url', 'ownerId', 'createdAt']) &&
-             data.keys().size() <= 9 &&
-             data.url is string && data.url.size() <= 2048 &&
+      return data.keys().hasAll(['url', 'ownerId', 'userId', 'createdAt']) &&
+             data.keys().size() <= 10 &&
+             data.url is string && data.url.size() <= 1100000 &&
              data.ownerId == request.auth.uid &&
+             data.userId == request.auth.uid &&
              (data.get('title', '') is string && data.get('title', '').size() <= 128) &&
-             (data.get('description', '') is string && data.get('description', '').size() <= 1024) &&
+             (data.get('description', '') is string && data.get('description', '').size() <= 2048) &&
              (data.get('albumId', '') is string && (data.get('albumId', '') == '' || isValidId(data.get('albumId', '')))) &&
              (data.get('isFavorite', false) is bool) &&
-             (data.get('tags', []).size() <= 20) &&
-             (data.get('storagePath', '') is string && data.get('storagePath', '').size() <= 1024);
+             (data.get('tags', []).size() <= 20);
     }
 
     // 1. Master Gate Patterns
