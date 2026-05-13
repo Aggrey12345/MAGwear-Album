@@ -85,17 +85,17 @@ service cloud.firestore {
     }
 
     match /photos/{photoId} {
-      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
-      allow get: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() && isEmailVerified() && isValidPhoto(incoming()) && 
                     incoming().createdAt == request.time &&
                     (incoming().albumId == '' || get(/databases/$(database)/documents/albums/$(incoming().albumId)).data.ownerId == request.auth.uid);
-      allow update: if isSignedIn() && resource.data.ownerId == request.auth.uid && 
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && 
                     isValidPhoto(incoming()) && 
-                    incoming().ownerId == existing().ownerId &&
+                    incoming().userId == existing().userId &&
                     incoming().createdAt == existing().createdAt &&
                     incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'albumId', 'isFavorite', 'tags']);
-      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
   }
 }
